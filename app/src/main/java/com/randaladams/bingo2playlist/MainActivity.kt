@@ -91,6 +91,8 @@ class MainActivity : ComponentActivity() {
         web.settings.javaScriptEnabled = true
         web.settings.domStorageEnabled = true
         web.settings.allowFileAccess = false
+        // Follow the phone's text size, but cap it so buttons don't balloon onto two lines.
+        web.settings.textZoom = (resources.configuration.fontScale * 100).toInt().coerceIn(85, 115)
         web.addJavascriptInterface(Bridge(), "Android")
         web.webViewClient = object : WebViewClient() {
             override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? =

@@ -18,14 +18,15 @@ h2{font-size:19px;font-weight:800;margin:22px 0 8px}
 .letters{display:grid;grid-template-columns:repeat(5,1fr);text-align:center;font-weight:900;font-size:40px;line-height:1;margin:6px 0 4px}
 .letters span:nth-child(odd){color:var(--daub)}.letters span:nth-child(even){color:var(--daub2)}
 .lede{color:var(--mute);margin:0 0 14px}
-button,.btn{font:600 16px system-ui,Roboto,sans-serif;min-height:48px;padding:0 18px;border-radius:999px;border:2px solid var(--ink);background:var(--paper);color:var(--ink);display:inline-flex;align-items:center;justify-content:center;gap:8px}
+button,.btn{font:600 16px system-ui,Roboto,sans-serif;min-height:48px;padding:0 14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-radius:999px;border:2px solid var(--ink);background:var(--paper);color:var(--ink);display:inline-flex;align-items:center;justify-content:center;gap:8px}
 button.primary{background:var(--daub);border-color:var(--daub);color:#fff}
 button.big{width:100%;min-height:60px;font-size:18px}
 button.small{min-height:36px;padding:0 12px;font-size:14px;border-width:1px}
 button:disabled{opacity:.45}
 .stack{display:grid;gap:10px}
 .two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-.item{background:var(--paper);border:1px solid var(--soft);border-radius:10px;padding:12px;display:flex;gap:10px;align-items:center}
+.item{background:var(--paper);border:1px solid var(--soft);border-radius:10px;padding:12px;display:flex;flex-wrap:wrap;gap:8px 10px;align-items:center}.item .grow{flex:1 1 100%}.item .acts{display:flex;gap:8px;flex:1 1 100%}.item .acts button{flex:1}.item .acts .del{flex:0 0 auto}
+.dlg{position:fixed;inset:0;background:rgba(0,0,0,.5);display:grid;place-items:center;z-index:40;padding:20px}.dlg>div{background:var(--bg);border-radius:16px;padding:20px;width:100%;max-width:420px}.dlg h3{margin:0 0 6px;font-size:20px}.dlg p{margin:0 0 16px;color:var(--mute)}.dlg .two button.danger{background:#c8102e;border-color:#c8102e;color:#fff}
 .item .grow{flex:1}
 .item b{display:block}
 .item small{color:var(--mute)}
@@ -57,7 +58,7 @@ label.f{display:block;font-weight:600;margin:12px 0 4px}
 .seg{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0}
 .seg button{min-height:40px;font-size:14px}
 .seg button[aria-pressed=true]{background:var(--ink);color:var(--bg)}
-.toast{position:fixed;left:50%;bottom:90px;transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:10px 18px;border-radius:999px;font-weight:600;opacity:0;transition:opacity .2s;z-index:30;pointer-events:none;white-space:nowrap}
+.toast{position:fixed;left:50%;bottom:90px;transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:10px 18px;border-radius:999px;font-weight:600;opacity:0;transition:opacity .2s;z-index:30;pointer-events:none;width:max-content;max-width:90vw;text-align:center;border-radius:16px}
 .toast.show{opacity:1;pointer-events:auto}
 [hidden]{display:none!important}
 </style>
@@ -85,8 +86,8 @@ label.f{display:block;font-weight:600;margin:12px 0 4px}
     <label class="f" for="bname">Batch name</label>
     <input type="text" id="bname" autocomplete="off">
     <div class="two" style="margin-top:14px">
-      <button class="primary" id="camBtn">📷 Take photos</button>
-      <button id="galBtn">Add from gallery</button>
+      <button class="primary" id="camBtn">📷 Camera</button>
+      <button id="galBtn">🖼 Gallery</button>
     </div>
     <p class="note" id="camNote">The camera reopens after each shot so you can snap card after card. Press back in the camera when the batch is done.</p>
     <div class="cards" id="cards"></div>
@@ -101,7 +102,7 @@ label.f{display:block;font-weight:600;margin:12px 0 4px}
 
 <div class="bar" id="bar" hidden>
   <button id="discard">Discard</button>
-  <button class="primary" id="finish">Finish &amp; save</button>
+  <button class="primary" id="finish">Save &amp; share</button>
 </div>
 
 <!-- share sheet -->
@@ -141,6 +142,10 @@ label.f{display:block;font-weight:600;margin:12px 0 4px}
   <button class="primary big" id="setClose" style="margin-top:12px">Save settings</button>
 </div></div>
 
+<div class="dlg" id="dlg" hidden role="dialog" aria-modal="true" aria-labelledby="dlgT"><div>
+  <h3 id="dlgT"></h3><p id="dlgM"></p>
+  <div class="two"><button id="dlgNo">Cancel</button><button class="danger" id="dlgYes">OK</button></div>
+</div></div>
 <div class="toast" id="toast" role="status"></div>
 
 <script>
@@ -238,7 +243,7 @@ function finishCard(id,res,how){const c=card(id);delete pending[id];if(!c)return
 // ---------- screens ----------
 function show(view){$('#home').hidden=view!=='home';$('#batch').hidden=view!=='batch';$('#bar').hidden=view!=='batch';
   $('#backBtn').hidden=view==='home';$('#title').textContent=view==='home'?'BINGO2PLAYLIST':'BATCH';
-  if(view==='home')renderHome();else{$('#bname').value=batch.name;renderCards();renderSongs();}window.scrollTo(0,0);}
+  if(view==='home')renderHome();else{$('#bname').value=batch.name;$('#discard').textContent=batch.editing?'🗑 Delete':'Discard';renderCards();renderSongs();}window.scrollTo(0,0);}
 const today=()=>new Date().toLocaleDateString(undefined,{month:'short',day:'numeric',year:'numeric'});
 function newBatch(){batch={id:uid(),name:`Bingo night – ${today()}`,songs:[],cards:[],editing:null};save();show('batch');}
 function save(){store.set('b2p.draft',batch);}
@@ -247,18 +252,25 @@ function renderHome(){
   $('#resume').hidden=!(batch&&(batch.songs.length||batch.cards.length));
   $('#saved').innerHTML=saved.length?saved.slice().sort((a,b)=>b.updated-a.updated).map(p=>`<div class="item" data-id="${p.id}">
     <div class="grow"><b>${esc(p.name)}</b><small>${p.songs.length} songs · ${p.cardCount||0} cards · ${new Date(p.updated).toLocaleDateString()}</small></div>
-    <button class="small" data-act="share">Share</button><button class="small" data-act="open" aria-label="Open">Edit</button></div>`).join('')
-   :'<div class="empty">No playlists yet. Start a batch, photograph your cards, then tap “Finish &amp; save”.</div>';}
-$('#saved').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;const p=saved.find(x=>x.id===b.closest('.item').dataset.id);if(!p)return;
+    <div class="acts"><button class="small" data-act="share">Share</button><button class="small" data-act="open">Edit</button><button class="small del" data-act="del" aria-label="Delete ${esc(p.name)}">🗑</button></div></div>`).join('')
+   :'<div class="empty">No playlists yet. Start a batch, photograph your cards, then tap “Save &amp; share”.</div>';}
+$('#saved').addEventListener('click',async e=>{const b=e.target.closest('button');if(!b)return;const p=saved.find(x=>x.id===b.closest('.item').dataset.id);if(!p)return;
   if(b.dataset.act==='share')openShare(p,false);
-  if(b.dataset.act==='open'){if(batch&&batch.songs.length&&!batch.editing&&!confirmAgain(b,'Replace unfinished batch?'))return;
+  if(b.dataset.act==='del'){if(await ask('Delete playlist?',`“${p.name}” (${p.songs.length} songs) will be removed from this phone.`,'Delete')){removeSaved(p.id);if(batch&&batch.editing===p.id){batch=null;store.set('b2p.draft',null);}renderHome();toast('Playlist deleted');}return;}
+  if(b.dataset.act==='open'){if(batch&&batch.songs.length&&!batch.editing&&!await ask('Replace unfinished batch?','Your unfinished batch will be thrown away.','Replace'))return;
     batch={id:uid(),name:p.name,songs:JSON.parse(JSON.stringify(p.songs)),cards:[],editing:p.id,cardCount:p.cardCount||0};save();show('batch');}});
-function confirmAgain(btn,msg){if(btn.dataset.sure){delete btn.dataset.sure;return true;}btn.dataset.sure=1;const o=btn.textContent;btn.textContent='Tap again';toast(msg);setTimeout(()=>{btn.textContent=o;delete btn.dataset.sure},3000);return false;}
+let dlgDone=null;
+function ask(title,msg,ok){$('#dlgT').textContent=title;$('#dlgM').textContent=msg;$('#dlgYes').textContent=ok;$('#dlg').hidden=false;
+  return new Promise(r=>{dlgDone=v=>{$('#dlg').hidden=true;dlgDone=null;r(v);};});}
+$('#dlgYes').addEventListener('click',()=>dlgDone&&dlgDone(true));
+$('#dlgNo').addEventListener('click',()=>dlgDone&&dlgDone(false));
+$('#dlg').addEventListener('click',e=>{if(e.target.id==='dlg'&&dlgDone)dlgDone(false);});
+function removeSaved(id){saved=saved.filter(x=>x.id!==id);store.set('b2p.saved',saved);}
 
-$('#newBatch').addEventListener('click',e=>{if(batch&&(batch.songs.length||batch.cards.length)&&!confirmAgain(e.currentTarget,'You have an unfinished batch. Tap again to start fresh.'))return;newBatch();});
+$('#newBatch').addEventListener('click',async()=>{if(batch&&(batch.songs.length||batch.cards.length)&&!await ask('Start fresh?','You have an unfinished batch. Starting a new one throws it away.','Start new'))return;newBatch();});
 $('#resumeBtn').addEventListener('click',()=>show('batch'));
 $('#backBtn').addEventListener('click',()=>{if(!$('#shareSheet').hidden||!$('#setSheet').hidden){closeSheets();return;}show('home');});
-window.onBack=()=>{if(!$('#shareSheet').hidden||!$('#setSheet').hidden){closeSheets();return true;}if(!$('#batch').hidden){show('home');return true;}return false;};
+window.onBack=()=>{if(dlgDone){dlgDone(false);return true;}if(!$('#shareSheet').hidden||!$('#setSheet').hidden){closeSheets();return true;}if(!$('#batch').hidden){show('home');return true;}return false;};
 $('#bname').addEventListener('input',e=>{batch.name=e.target.value;save();});
 
 $('#camBtn').addEventListener('click',()=>{if(!A)return toast('Camera works in the Android app');A.takePhoto(true);});
@@ -282,7 +294,14 @@ $('#songs').addEventListener('click',e=>{const b=e.target.closest('button');if(!
   if(b.dataset.act==='del'){batch.songs.splice(i,1);save();renderSongs();toast('Song removed · tap to undo',()=>{batch.songs.splice(i,0,x);save();renderSongs();});}});
 $('#addSong').addEventListener('click',()=>{batch.songs.push({id:uid(),title:'',artist:'',cards:[]});save();renderSongs();const ins=document.querySelectorAll('#songs input[data-k=title]');ins[ins.length-1]?.focus();});
 $('#sortBtn').addEventListener('click',()=>{batch.songs.sort((a,b)=>normTitle(a.title).localeCompare(normTitle(b.title)));save();renderSongs();});
-$('#discard').addEventListener('click',e=>{if(!confirmAgain(e.currentTarget,'Tap Discard again to throw this batch away'))return;batch=null;store.set('b2p.draft',null);show('home');});
+$('#discard').addEventListener('click',async()=>{
+  const ed=batch.editing&&saved.find(x=>x.id===batch.editing);
+  const ok=ed?await ask('Delete playlist?',`“${ed.name}” will be removed from this phone.`,'Delete')
+             :await ask('Discard this batch?',`${batch.songs.length} songs and ${batch.cards.length} photos will be thrown away.`,'Discard');
+  if(!ok)return;
+  if(ed)removeSaved(ed.id);
+  (batch.cards||[]).forEach(c=>A&&A.forget&&A.forget(c.id));
+  batch=null;store.set('b2p.draft',null);show('home');toast(ed?'Playlist deleted':'Batch discarded');});
 
 $('#finish').addEventListener('click',()=>{dedupe();
   const songs=batch.songs.filter(s=>s.title.trim()).map(s=>({...s,title:s.title.trim(),artist:s.artist.trim()}));
