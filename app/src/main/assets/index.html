@@ -151,7 +151,56 @@ label.f{display:block;font-weight:600;margin:12px 0 4px}
 <script>
 {
 const $=s=>document.querySelector(s);
-const A=window.Android||null;
+const NATIVE=!!window.Android;
+// In the Android app, window.Android is the native bridge. In a browser, webBridge() provides the same calls.
+const A=window.Android||webBridge();
+function webBridge(){
+  const blobs={};let worker=null,workerP=null,q=Promise.resolve();
+  const mk=(cap,multi)=>{const i=document.createElement('input');i.type='file';i.accept='image/*';if(cap)i.setAttribute('capture','environment');i.multiple=!!multi;i.hidden=true;
+    i.addEventListener('change',()=>{[...i.files].forEach(take);i.value='';});document.body.appendChild(i);return i;};
+  const cam=mk(true,false),gal=mk(false,true);
+  const uid8=()=>Math.random().toString(36).slice(2,10);
+  async function take(file){const id=uid8();window.onImageStart(id);
+    try{const bmp=await createImageBitmap(file,{imageOrientation:'from-image'});
+      const fit=(m)=>{const sc=Math.min(1,m/Math.max(bmp.width,bmp.height));const c=document.createElement('canvas');c.width=Math.round(bmp.width*sc);c.height=Math.round(bmp.height*sc);c.getContext('2d').drawImage(bmp,0,0,c.width,c.height);return c;};
+      const big=fit(2000);blobs[id]={canvas:big,jpeg:await new Promise(r=>fit(1600).toBlob(r,'image/jpeg',0.85))};
+      window.onImage({id,thumb:fit(160).toDataURL('image/jpeg',0.7),w:big.width,h:big.height,lines:null});
+    }catch(e){window.onImageError(id,'Couldn’t open that photo');}}
+  function loadTesseract(){if(workerP)return workerP;
+    workerP=new Promise((res,rej)=>{const sc=document.createElement('script');sc.src='https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js';
+      sc.onload=async()=>{try{worker=await Tesseract.createWorker('eng');await worker.setParameters({tessedit_pageseg_mode:'11'});res(worker);}catch(e){rej(e);}};
+      sc.onerror=()=>rej(new Error('Couldn’t load the text reader. Check your connection.'));document.head.appendChild(sc);});
+    workerP.catch(()=>{workerP=null;});return workerP;}
+  // Drop coloured dauber ink: use the brightest channel, so pink/teal ink turns near-white while black print stays dark.
+  function inkless(src){const c=document.createElement('canvas');c.width=src.width;c.height=src.height;const x=c.getContext('2d');x.drawImage(src,0,0);
+    const im=x.getImageData(0,0,c.width,c.height),d=im.data;for(let i=0;i<d.length;i+=4){const v=Math.max(d[i],d[i+1],d[i+2]);d[i]=d[i+1]=d[i+2]=v;}x.putImageData(im,0,0);return c;}
+  return{
+    pickImages(){gal.click();},
+    takePhoto(){cam.click();},
+    stopCamera(){},
+    forget(id){delete blobs[id];},
+    version(){return 'web';},
+    ocr(id){q=q.then(async()=>{const b=blobs[id];if(!b){window.onOcr(id,null,'Photo no longer in memory, add it again');return;}
+      try{window.onOcrStatus&&onOcrStatus(id,worker?'Reading…':'Loading reader…');const w=await loadTesseract();window.onOcrStatus&&onOcrStatus(id,'Reading…');
+        const {data}=await w.recognize(inkless(b.canvas));
+        const src=(data.lines&&data.lines.length?data.lines:data.words)||[];
+        window.onOcr(id,src.map(l=>({t:String(l.text||'').replace(/[|_]/g,' ').trim(),x:l.bbox.x0,y:l.bbox.y0,w:l.bbox.x1-l.bbox.x0,h:l.bbox.y1-l.bbox.y0})).filter(l=>l.t));
+      }catch(e){window.onOcr(id,null,e.message||'Text reading failed');}});},
+    claudeRead(id,key,model,prompt){(async()=>{const b=blobs[id];if(!b)return window.onClaude(id,false,'Photo no longer in memory, add it again');
+      try{const b64=await new Promise(r=>{const f=new FileReader();f.onload=()=>r(String(f.result).split(',')[1]);f.readAsDataURL(b.jpeg);});
+        const res=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'content-type':'application/json','x-api-key':key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
+          body:JSON.stringify({model,max_tokens:4000,messages:[{role:'user',content:[{type:'image',source:{type:'base64',media_type:'image/jpeg',data:b64}},{type:'text',text:prompt}]}]})});
+        const j=await res.json().catch(()=>({}));
+        if(!res.ok)return window.onClaude(id,false,'Claude: '+((j.error&&j.error.message)||('HTTP '+res.status)));
+        window.onClaude(id,true,(j.content||[]).filter(x=>x.type==='text').map(x=>x.text).join(''));
+      }catch(e){window.onClaude(id,false,'Network error: '+e.message);}})();},
+    async share(name,mime,text,subject){const file=new File([text],name,{type:mime});
+      try{if(navigator.canShare&&navigator.canShare({files:[file]})){await navigator.share({files:[file],title:subject});return;}}catch(e){if(e.name==='AbortError')return;}
+      this.save(name,text);},
+    save(name,text){const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([text],{type:'text/plain'}));a.download=name;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},2000);},
+    copy(text){navigator.clipboard?.writeText(text).catch(()=>{});},
+    open(url){window.open(url,'_blank','noopener');}
+  };}
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const uid=()=>Math.random().toString(36).slice(2,10);
 const store={get(k,d){try{const v=localStorage.getItem(k);return v==null?d:JSON.parse(v)}catch(e){return d}},set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}};
@@ -185,6 +234,12 @@ function dedupe(){const seen=new Map();const n=batch.songs.length;
   return n-batch.songs.length;}
 
 // ---------- reading on the phone: rebuild the 5x5 grid from OCR line boxes ----------
+// group boxes into text lines (same height band), each read left to right
+function rows(items){const s=items.slice().sort((a,b)=>a.cy-b.cy),out=[];
+  for(const it of s){const r=out[out.length-1];
+    if(r&&Math.abs(it.cy-r.cy)<Math.max(r.h,it.h)*0.55){r.items.push(it);r.y=Math.min(r.y,it.y);r.h=Math.max(r.y+r.h,it.y+it.h)-r.y;r.cy=r.y+r.h/2;}
+    else out.push({items:[it],y:it.y,h:it.h,cy:it.cy});}
+  return out.map(r=>({t:r.items.sort((a,b)=>a.x-b.x).map(x=>x.t).join(' '),y:r.y,h:r.h}));}
 function parseGrid(lines,W,H){
   const clean=lines.map(l=>({...l,t:String(l.t).trim(),cx:l.x+l.w/2,cy:l.y+l.h/2})).filter(l=>l.t);
   let top=-1,cardTitle='';
@@ -201,7 +256,7 @@ function parseGrid(lines,W,H){
   const cw=(x1-x0)/5,ch=(y1-y0)/5,cells=Array.from({length:25},()=>[]);
   for(const l of body){const c=Math.max(0,Math.min(4,Math.floor((l.cx-x0)/cw))),r=Math.max(0,Math.min(4,Math.floor((l.cy-y0)/ch)));cells[r*5+c].push(l);}
   const songs=[];
-  cells.forEach((ls,i)=>{if(!ls.length)return;ls.sort((a,b)=>a.y-b.y);
+  cells.forEach((raw,i)=>{if(!raw.length)return;const ls=rows(raw);
     if(ls.some(l=>/free\s*space/i.test(l.t)))return;
     let split=ls.length>1?1:ls.length,gap=-1e9;
     for(let k=1;k<ls.length;k++){const g=ls[k].y-(ls[k-1].y+ls[k-1].h);if(g>gap){gap=g;split=k;}}
@@ -224,12 +279,17 @@ window.onImageStart=id=>{if(!batch)newBatch();else if($('#batch').hidden)show('b
 window.onImageError=(id,msg)=>{const c=card(id);if(c){c.state='err';c.msg=msg;save();renderCards();}toast(msg);};
 window.onImage=d=>{const c=card(d.id);if(!c)return;c.thumb=d.thumb;
   pending[d.id]=d;
-  if(settings.engine==='claude'&&settings.key&&A){c.msg='Asking Claude…';renderCards();A.claudeRead(d.id,settings.key,settings.model||'claude-sonnet-5-5',PROMPT);}
-  else finishCard(d.id,parseGrid(d.lines,d.w,d.h),'phone');};
+  if(settings.engine==='claude'&&settings.key){c.msg='Asking Claude…';renderCards();A.claudeRead(d.id,settings.key,settings.model||'claude-sonnet-5-5',PROMPT);}
+  else readOnDevice(d);};
+function readOnDevice(d){if(d.lines)return finishCard(d.id,parseGrid(d.lines,d.w,d.h),'device');pending[d.id]=d;A.ocr(d.id);}
+window.onOcrStatus=(id,msg)=>{const c=card(id);if(c){c.msg=msg;renderCards();}};
+window.onOcr=(id,lines,err)=>{const d=pending[id];if(!d)return;
+  if(!lines){const c=card(id);delete pending[id];if(c){c.state='err';c.msg=err||'Couldn’t read';save();renderCards();}toast(err||'Couldn’t read that photo');return;}
+  d.lines=lines;finishCard(id,parseGrid(lines,d.w,d.h),'device');};
 window.onClaude=(id,ok,text)=>{const d=pending[id];if(!d)return;
   if(ok){try{const m=String(text).match(/\{[\s\S]*\}/);const j=JSON.parse(m[0]);finishCard(id,{cardTitle:j.card_title||'',songs:Array.isArray(j.songs)?j.songs:[]},'Claude');return;}catch(e){}}
-  toast(ok?'Claude reply unreadable, used on-phone reading':String(text).slice(0,80));
-  finishCard(id,parseGrid(d.lines,d.w,d.h),'phone');};
+  toast(ok?'Claude reply unreadable, using built-in reading':String(text).slice(0,80));
+  readOnDevice(d);};
 function card(id){return batch&&batch.cards.find(c=>c.id===id);}
 function finishCard(id,res,how){const c=card(id);delete pending[id];if(!c)return;
   const n=batch.cards.filter(x=>x.state==='done').length+1;
@@ -344,6 +404,8 @@ $('#setClose').addEventListener('click',()=>{settings={engine:$('#engine').value
   store.set('b2p.settings',settings);closeSheets();});
 $('#setSheet').addEventListener('click',e=>{if(e.target.id==='setSheet')closeSheets();});
 
+if(!NATIVE){$('#camNote').textContent='Tap Camera for each card (on a phone it opens the camera), or pick several photos with Gallery.';
+  $('#engine').options[0].textContent='In this browser (free)';}
 // restore: photos still "reading" when the app was closed can't finish
 if(batch)batch.cards.forEach(c=>{if(c.state==='reading'){c.state='err';c.msg='Interrupted, retake';}});
 show('home');
